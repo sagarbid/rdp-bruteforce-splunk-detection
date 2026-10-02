@@ -1,0 +1,35 @@
+title: RDP Brute-Force - Multiple Failed Logons from Single Source
+id: 8f3b2a10-4d7e-4c9a-9b21-0a6f5c3e1d42
+status: experimental
+description: >
+  Detects a burst of Windows Security Event ID 4625 network-logon failures
+  from a single source IP address, indicative of an RDP dictionary/brute-force
+  attack against one or more accounts.
+author: Sagar Bidari
+date: 2026/10/02
+references:
+  - https://attack.mitre.org/techniques/T1110/001/
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4625
+    LogonType:
+      - 3
+      - 10
+  timeframe: 1m
+  condition: selection | count() by IpAddress >= 5
+fields:
+  - TargetUserName
+  - IpAddress
+  - LogonType
+  - Status
+falsepositives:
+  - Service accounts or scheduled tasks using stale cached credentials
+  - Misconfigured applications retrying failed logons
+level: high
+tags:
+  - attack.credential_access
+  - attack.t1110.001
+  - attack.t1021.001

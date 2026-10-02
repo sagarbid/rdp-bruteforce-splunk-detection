@@ -1,0 +1,38 @@
+# ============================================================
+# RDP Brute-Force Detection — Splunk SPL searches
+# Primary signal: Windows Security Event ID 4625 (failed logon)
+# Index: main   Sourcetype: WinEventLog:Security
+# ============================================================
+
+# --- Search 1: Baseline — all failed logons from the target ---
+index=main host=homelabvm sourcetype="WinEventLog:Security" EventCode=4625
+
+
+# --- Search 2: Isolate RDP / network brute-force attempts ---
+index=main host=homelabvm sourcetype="WinEventLog:Security" EventCode=4625 (Logon_Type=3 OR Logon_Type=10)
+| table _time, Account_Name, Logon_Type, Source_Network_Address, Failure_Reason
+
+
+# --- Search 3: Attack fingerprint — failures by account + source ---
+index=main host=homelabvm sourcetype="WinEventLog:Security" EventCode=4625
+| stats count AS failed_attempts, min(_time) AS first_seen, max(_time) AS last_seen
+        by Account_Name, Source_Network_Address
+| sort - failed_attempts
+
+
+# --- Search 4: Burst detection (alert logic) ---
+index=main host=homelabvm sourcetype="WinEventLog:Security" EventCode=4625
+| bucket _time span=1m
+| stats count AS attempts_per_min by _time, Source_Network_Address
+| where attempts_per_min >= 5
+
+
+# --- Search 5: The breach — successful logons from the attacker (4624) ---
+index=main host=homelabvm sourcetype="WinEventLog:Security" EventCode=4624 Source_Network_Address=192.168.100.134
+
+
+# --- Search 6: Compromise correlation — failures THEN success from one source ---
+index=main host=homelabvm sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=4624)
+| stats count(eval(EventCode=4625)) AS failures, count(eval(EventCode=4624)) AS successes,
+        values(Account_Name) AS accounts by Source_Network_Address
+| where failures >= 5 AND successes >= 1
